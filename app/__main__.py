@@ -6,9 +6,15 @@ from llama_index.core.workflow import Context
 
 from app.llm_model import llm
 from db.config import MongoManager
-from tools.database.tools import create_event, get_event_from_name, update_event
+from tools.database.tools import (
+    create_event,
+    delete_event_from_name,
+    get_all_events,
+    get_event_from_name,
+    update_event,
+)
 from utils.logger import get_logger
-from utils.prompts import SYSTEM_PROMPT
+from utils.prompts import SYSTEM_PROMPT_3
 
 logger = get_logger(__name__)
 
@@ -17,10 +23,16 @@ async def main():
     try:
         workflow = FunctionAgent(
             name="Event Agent",
-            description="Useful for fetching, creating and updating events",
+            description="Useful for fetching, creating, updating and deleting events",
             llm=llm,
-            tools=[get_event_from_name,create_event,update_event],
-            system_prompt=SYSTEM_PROMPT,
+            tools=[
+                get_all_events,
+                get_event_from_name,
+                create_event,
+                update_event,
+                delete_event_from_name
+            ],
+            system_prompt=SYSTEM_PROMPT_3,
         )
         ctx = Context(workflow)
 
@@ -41,7 +53,7 @@ async def main():
                 if isinstance(event, AgentStream):
                     print(event.delta, end="", flush=True)
                 else:
-                    logger.info("Agent event", extra={"event": str(event)})
+                    logger.info(f"Agent event: {event}", extra={"event": str(event)})
 
             await handler
 
