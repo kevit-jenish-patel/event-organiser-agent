@@ -1,7 +1,8 @@
 import json
 import logging
-import sys
+import os
 from datetime import datetime, timezone
+from logging.handlers import RotatingFileHandler
 from typing import Any, Dict
 
 
@@ -43,12 +44,24 @@ def get_logger(name: str) -> logging.Logger:
     if logger.handlers:
         return logger
 
-    logger.setLevel(logging.WARNING)
+    logger.setLevel(logging.INFO)
 
-    handler = logging.StreamHandler(sys.stdout)
+    os.makedirs("logs", exist_ok=True)
+
+    handler = RotatingFileHandler(
+        "logs/app.log",
+        maxBytes=5 * 1024 * 1024,  # 5 MB
+        backupCount=5
+    )
     handler.setFormatter(JsonFormatter())
 
+    error_handler = RotatingFileHandler("logs/error.log")
+    error_handler.setLevel(logging.ERROR)
+    error_handler.setFormatter(JsonFormatter())
+
     logger.addHandler(handler)
+    logger.addHandler(error_handler)
+
     logger.propagate = False
 
     return logger

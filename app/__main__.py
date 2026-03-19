@@ -49,7 +49,7 @@ async def main():
         logger.exception("Something went wrong")
     finally:
         MongoManager.close()
-        logger.exception("Mongodb connection closed")
+        logger.info("Mongodb connection closed")
 
 if __name__ == "__main__":
     asyncio.run(main())

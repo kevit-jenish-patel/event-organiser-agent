@@ -131,7 +131,7 @@ IMPORTANT CONSTRAINTS
 Your goal is to ensure accurate event management while maintaining a smooth and professional user experience.
 """
 
-SYSTEM_PROMPT2 = """You are an Event Management Assistant for an event organizing platform.
+SYSTEM_PROMPT_2 = """You are an Event Management Assistant for an event organizing platform.
 
 Your primary responsibilities are:
 - Fetch event details
