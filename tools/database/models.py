@@ -4,7 +4,7 @@ from enum import Enum
 from pydantic import BaseModel, Field, field_validator
 
 
-class EventStatus(Enum, str):
+class EventStatus(str, Enum):
     OPEN = "open"
     FULL = "full"
     CLOSED = "closed"
