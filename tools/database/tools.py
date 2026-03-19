@@ -20,7 +20,8 @@ def get_event_from_name(query: EventQuery)->Dict[str,Any]|None:
     Parameters:
         query (EventQuery):
             A structured query object containing the fields required to identify
-            an event. This must conform to the EventQuery schema.
+            an event. This must conform to the following EventQuery schema:
+                - name (str)
 
     Returns:
         Dict[str, Any] | None:
@@ -154,9 +155,8 @@ def update_event(query:EventQuery, event: UpdateEvent)->bool:
     Parameters:
         query (EventQuery):
             A structured object used to identify the event to be updated.
-            This must conform to the EventQuery schema and typically includes
-            fields such as:
-                - name (str) or other identifying attributes
+            This must conform to the following EventQuery schema:
+                - name (str)
 
         event (UpdateEvent):
             A structured object containing the fields to update in the event.
