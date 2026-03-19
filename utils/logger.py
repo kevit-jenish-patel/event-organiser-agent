@@ -43,7 +43,7 @@ def get_logger(name: str) -> logging.Logger:
     if logger.handlers:
         return logger
 
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.WARNING)
 
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JsonFormatter())

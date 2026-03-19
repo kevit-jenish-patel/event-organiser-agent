@@ -15,7 +15,10 @@ class EventStatus(str, Enum):
 class CreateEvent(BaseModel):
     name: str = Field(..., description="The name of the event")
     description: str = Field(..., description="A brief description of the event")
-    date: datetime = Field(..., description="The date and time of the event (in UTC timezone)")
+    date: datetime = Field(
+        ...,
+        description="The date and time of the event (in UTC timezone)"
+    )
     location: str = Field(..., description="The location/venue of the event")
     organiser: str = Field(..., description="The name of the organiser of the event")
     status: EventStatus = Field(EventStatus.OPEN, description="The status of the event")

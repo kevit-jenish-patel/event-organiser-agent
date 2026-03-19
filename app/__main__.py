@@ -43,6 +43,8 @@ async def main():
                 else:
                     logger.info("Agent event", extra={"event": str(event)})
 
+            await handler
+
     except Exception:
         logger.exception("Something went wrong")
     finally:
