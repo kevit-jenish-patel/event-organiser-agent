@@ -14,7 +14,7 @@ from tools.database.tools import (
     update_event,
 )
 from utils.logger import get_logger
-from utils.prompts import SYSTEM_PROMPT_3
+from utils.prompts import SYSTEM_PROMPT_4
 
 logger = get_logger(__name__)
 
@@ -35,7 +35,7 @@ async def main():
                 update_event,
                 delete_event
             ],
-            system_prompt=SYSTEM_PROMPT_3,
+            system_prompt=SYSTEM_PROMPT_4,
         )
 
         # 2. Initialize the workflow context
