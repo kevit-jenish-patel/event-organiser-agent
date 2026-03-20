@@ -101,7 +101,7 @@ async def main():
 
             except Exception:
                 logger.exception("An error occurred during agent execution.")
-                print(f"\n❌ Error: Something went wrong while processing your request. Please try again.")
+                print("\n❌ Error: Something went wrong while processing your request. Please try again.")
 
     except Exception:
         logger.exception("A critical failure occurred during initialization.")
@@ -111,7 +111,7 @@ async def main():
             MongoManager.close()
             logger.info("MongoDB connection safely closed.")
         except Exception:
-            logger.exception(f"Failed to close MongoDB connection cleanly")
+            logger.exception("Failed to close MongoDB connection cleanly")
 
 
 if __name__ == "__main__":
@@ -125,6 +125,6 @@ if __name__ == "__main__":
         try:
             MongoManager.close()
             logger.info("MongoDB connection safely closed.")
-        except Exception as e:
-            logger.exception(f"Failed to close MongoDB connection cleanly")
+        except Exception:
+            logger.exception("Failed to close MongoDB connection cleanly")
             pass

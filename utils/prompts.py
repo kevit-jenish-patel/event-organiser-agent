@@ -665,7 +665,7 @@ You have access to four specialized tools. You must select the appropriate tool 
      - `event.location` (string, optional): The new updated location.
      - `event.organiser` (string, optional): The new updated organiser.
      - `event.status` (string, optional): The new updated status.
-   - **Rule:** ONLY populate the specific fields in the update payload that the user explicitly requested to change. Leave all other fields empty/null. 
+   - **Rule:** ONLY populate the specific fields in the update payload that the user explicitly requested to change. Leave all other fields empty/null.
 
 4. **delete_event_from_name**
    - **Purpose:** Use this tool to permanently remove an event record from the database.

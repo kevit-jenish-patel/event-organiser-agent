@@ -1,7 +1,10 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from pymongo.operations import SearchIndexModel
+
 from db.config import MongoManager
+from utils.constants import EMBEDDING_DIMENSIONS
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -12,6 +15,55 @@ class EventRepository:
         self.collection = MongoManager.get_db()["events"]
         # The name of the Vector Search Index created in the MongoDB Atlas UI
         self.vector_index_name = "event_vector_index"
+        self.index_exists = False
+
+    def _ensure_vector_index_exists(self):
+        """
+        Checks if the Atlas Vector Search index exists, and creates it if it does not.
+        """
+        try:
+            if self.index_exists:
+                return
+
+            # 1. Fetch existing search indexes
+            existing_indexes = list(self.collection.list_search_indexes())
+            index_names = [idx.get("name") for idx in existing_indexes]
+
+            # 2. Check if our index is already there
+            if self.vector_index_name in index_names:
+                self.index_exists = True
+                logger.info(f"Vector search index '{self.vector_index_name}' already exists. Skipping creation.")
+                return
+
+            logger.info(f"Creating vector search index '{self.vector_index_name}'...")
+
+            # 3. Define the Vector Search Index schema
+            search_index_model = SearchIndexModel(
+                definition={
+                    "fields": [
+                        {
+                            "type": "vector",
+                            "path": "embedding",
+                            "numDimensions": EMBEDDING_DIMENSIONS,
+                            "similarity": "cosine"  # 'cosine', 'euclidean', or 'dotProduct'
+                        }
+                    ]
+                },
+                name=self.vector_index_name,
+                type="vectorSearch"  # CRITICAL: Must specify it's a vector search, not standard text search
+            )
+
+            # 4. Create the index
+            self.collection.create_search_index(model=search_index_model)
+            self.index_exists = True
+            logger.info(f"Successfully triggered creation of vector search index: {self.vector_index_name}")
+
+            # Note: Atlas builds these indexes asynchronously in the background.
+            # It may take a minute before semantic_search returns results for newly inserted data.
+
+        except Exception:
+            self.index_exists = False
+            logger.exception("Failed to create vector search index")
 
     def get_all_events(self, query: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         query = query or {}
