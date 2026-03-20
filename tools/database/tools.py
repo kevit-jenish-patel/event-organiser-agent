@@ -1,382 +1,314 @@
-from typing import Any, Dict, List
+import json
+from typing import Any, Dict, List, Optional
 
+from llama_index.core.workflow import Context, HumanResponseEvent, InputRequiredEvent
 from pydantic import ValidationError
 
+from app.models.embedding_model import embed_model
 from repository.event.event_repository import event_repository
 from tools.database.models import CreateEvent, EventQuery, UpdateEvent
+from utils.helpers import generate_event_embedding
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-def get_all_events(query)->List[Dict[str,Any]]:
+# --- LlamaIndex Tools ---
+
+def search_events(query: str) -> List[Dict[str, Any]]:
     """
-    Retrieve a list of events from the database based on filter criteria.
+    Perform a semantic search to find events based on a natural language query.
 
     Description:
-        This tool fetches multiple events from the database using the provided
-        query filters. It returns a list of matching events. If no filters are
-        provided (empty query), all events may be returned.
+        This tool uses vector embeddings to perform a similarity search in the database.
+        Unlike traditional exact-match filtering, it understands context, synonyms, and
+        semantic meaning. Use this tool as your primary method whenever a user asks to
+        find, list, or inquire about existing events.
 
     Parameters:
-        query (Dict[str, Any]):
-            A dictionary containing filter criteria to search for events.
-            The keys and values depend on the event schema and may include:
-                - name (str, optional): Filter by event name
-                - organiser (str, optional): Filter by organiser name
-                - status (str, optional): Filter by event status
-                - location (str, optional): Filter by event location
-                - date (datetime or range, optional): Filter by event date
-
-            Example:
-                {
-                    "status": "open",
-                    "organiser": "John Doe"
-                }
+        query (str):
+            A clear, natural language string representing the user's search intent.
+            You should actively formulate this query based on the user's request, combining
+            relevant keywords like topics, locations, or timeframes into a single sentence.
+            Example: "Artificial Intelligence conferences in Mumbai next month"
 
     Returns:
         List[Dict[str, Any]]:
-            - On success:
-                Returns a list of event objects. Each event is a dictionary containing:
+            - On success (events found):
+                Returns a list of up to 5 event dictionaries sorted by relevance.
+                Each dictionary contains the event details and a similarity score:
                 {
                     "_id": str,
                     "name": str,
                     "description": str,
-                    "date": datetime,
+                    "date": str (ISO 8601 UTC format),
                     "location": str,
                     "organiser": str,
                     "status": str,
-                    ...
+                    "score": float (Relevance metric)
                 }
 
-                The list may be empty if no matching events are found.
-
-            - On success (no matching events):
-                Returns an empty list []
-
-    Raises:
-        ValidationError:
-            Raised when the query is not a valid dictionary.
+            - On success (no events found) or failure:
+                Returns an empty list: []
 
     LLM Usage Guidelines:
-        - Always provide the query as a valid dictionary.
-        - Use only known and valid fields when constructing the query.
-        - Do not include unsupported or unknown keys.
-
-        Handling Results:
-        - If the function returns a non-empty list:
-            → Present the list of events clearly to the user.
-            → Optionally summarize or highlight relevant details.
-
-        - If the function returns an empty list:
-            → Inform the user that no matching events were found.
-            → Suggest modifying or broadening the search criteria.
-
-        - If a ValidationError occurs:
-            → The query format is invalid.
-            → Correct the query structure and retry the tool call.
-            → Do NOT assume any results in this case.
-
-    Notes:
-        - This is a read-only operation and does not modify any data.
-        - The filtering behavior depends on how the repository interprets the query.
-        - Passing an empty query may return all events in the database.
+        - Tool Selection: Always default to this tool for retrieving events unless the
+          user is explicitly asking to create, update or delete a specific event.
+        - Query Optimization: Translate vague user requests into rich search strings.
+          If a user says "tech stuff", expand the query to "technology events, meetups, or conferences".
+        - Handling Results:
+            → If events are returned: Synthesize the results into a friendly, conversational
+              response. Highlight the most relevant events and their key details (date, location).
+            → If an empty list [] is returned: Politely inform the user that no matching
+              events were found. Suggest they try different keywords or broaden their search.
     """
     try:
-        if not isinstance(query,Dict):
-            raise ValidationError("Query must be a dictionary")
-
-        events = event_repository.get_all_events(
-            query=query
-        )
+        query_embedding = embed_model.get_text_embedding(query)
+        events = event_repository.semantic_search(query_vector=query_embedding, limit=5)
         return events
-    except ValidationError as e:
-        logger.exception(
-            "Invalid query parameter",
-            extra={"query":query}
-        )
-        raise e
-
-def get_event_from_name(query: EventQuery)->Dict[str,Any]|None:
-    """
-    Retrieve an event from the database using query parameters.
-
-    Description:
-        This tool validates the input query and searches for an event in the database
-        using the provided attributes (e.g., event name or other identifying fields).
-        It returns the matching event if found.
-
-    Parameters:
-        query (EventQuery):
-            A structured query object containing the fields required to identify
-            an event. This must conform to the following EventQuery schema:
-                - name (str)
-
-    Returns:
-        Dict[str, Any] | None:
-            - On success (event found):
-                Returns a dictionary containing event details such as:
-                {
-                    "_id": str,
-                    "name": str,
-                    "description": str,
-                    "date": datetime,
-                    "location": str,
-                    "organiser": str,
-                    "status": "open" | "full" | "closed" | "completed" | "cancelled",
-                    ...
-                }
-
-            - On success (no event found):
-                Returns None
-
-    Raises:
-        ValidationError:
-            Raised when the input query does not match the expected schema.
-
-    LLM Usage Guidelines:
-        - Always provide a properly structured query matching the EventQuery schema.
-        - If the function returns a valid dictionary:
-            → Use the event data to answer the user's question.
-        - If the function returns None:
-            → Inform the user that no matching event was found.
-            → Optionally ask for clarification or suggest similar queries.
-        - If a ValidationError occurs:
-            → The input format was incorrect.
-            → Correct the query structure and retry the tool call.
-            → Do NOT assume any result in this case.
-
-    Notes:
-        - This function does not modify any data; it is a read-only operation.
-        - The search behavior depends on how EventQuery is defined and how the
-          repository processes the query.
-    """
-    try:
-        query = EventQuery.model_validate(query)
-
-        event = event_repository.get_event_by_name(
-            event_name=query.name
-        )
-        return event
-    except ValidationError as e:
-        logger.exception(
-            "Invalid query parameter",
-            extra={"query":query}
-        )
-        raise e
+    except Exception:
+        logger.exception("Failed to execute semantic search", extra={"query": query})
+        return []
 
 
-def create_event(event: CreateEvent)->bool:
+def create_event(event: CreateEvent) -> bool:
     """
     Create a new event in the database.
 
     Description:
-        This tool validates the provided event data and inserts a new event record
-        into the database. It returns a boolean indicating whether the creation
-        was successful.
+        This tool validates the provided event data, generates a semantic vector embedding
+        for future natural language searchability, and inserts the new event record into MongoDB.
+        Use this tool whenever a user explicitly requests to schedule, host, or create a new event.
 
     Parameters:
         event (CreateEvent):
             A structured object containing all required details to create an event.
-            This must conform to the CreateEvent schema, which typically includes:
-                - name (str): Name of the event
-                - description (str): Description of the event
-                - date (datetime): Date and time of the event
-                - location (str): Event location
-                - organiser (str): Organiser name
-                - status ("open" | "full" | "closed" | "completed" | "cancelled"): Event status
+            You must construct this object using the following exact schema:
+                - name (str): The exact, official name of the event.
+                - description (str): A clear, brief description of the event's purpose or agenda.
+                - date (str): The date and time of the event.
+                  CRITICAL: This must be strictly in ISO 8601 UTC format (e.g., '2026-04-15T15:00:00Z').
+                  CRITICAL: The date MUST be in the future relative to the current time provided in your system prompt.
+                - location (str): The physical venue or virtual link for the event.
+                - organiser (str): The name of the person or entity hosting the event.
+                - status (str): The initial status of the event. Must be exactly one of:
+                  'open', 'full', 'closed', 'completed', or 'cancelled'. (Defaults to 'open').
 
     Returns:
         bool:
-            - True:
-                The event was successfully validated and inserted into the database.
-            - False:
-                The insertion failed (e.g., database did not return an inserted ID).
-
-    Raises:
-        ValidationError:
-            Raised when the provided event data does not match the expected schema.
+            - True: The event was successfully validated, embedded, and inserted into the database.
+            - False: The insertion failed at the database level.
+            - Raises ValidationError: If the input data is malformed or the date is in the past.
 
     LLM Usage Guidelines:
-        - Always construct the event input strictly according to the CreateEvent schema.
-        - Ensure all required fields are present and correctly typed before calling the tool.
-
-        Handling Results:
-        - If the function returns True:
-            → Inform the user that the event was successfully created.
-            → Optionally summarize the created event details.
-
-        - If the function returns False:
-            → Inform the user that the event creation failed.
-            → Suggest retrying or checking input data.
-
-        - If a ValidationError occurs:
-            → The input format or data is incorrect.
-            → Fix missing or invalid fields and retry the tool call.
-            → Do NOT assume the event was created.
-
-    Notes:
-        - This function performs a write operation (creates new data).
-        - It does not return the created event ID or object, only a success flag.
-        - Ensure no duplicate or conflicting events are created unless intended.
+        - Time Awareness: Before calling this tool, always check the user's requested date
+          against the current time provided in your system context. If the user asks for a
+          date in the past, DO NOT call this tool. Inform the user that events must be scheduled in the future.
+        - Data Inference: If the user request is missing required fields (e.g., they provide
+          a name and date, but no location or organiser), politely ask them to provide the
+          missing details before executing the tool. Do not hallucinate missing data.
+        - Handling Results:
+            → If True: Enthusiastically confirm to the user that the event has been successfully created
+              and summarize the key details (Name, Date, Location) back to them.
+            → If a ValidationError occurs: Read the error message carefully. If it's a date issue,
+              ask the user to clarify the correct future date. If it's a format issue, silently fix
+              your JSON payload and retry.
     """
     try:
-        event = CreateEvent.model_validate(event)
-        inserted_id = event_repository.create_event(event.model_dump())
+        event_data = CreateEvent.model_validate(event)
 
-        success = True if inserted_id else False
-        return success
-    except ValidationError as e:
-        logger.exception(
-            "Invalid event parameter",
-            extra={"event": event}
+        # 1. Generate the embedding
+        embedding = generate_event_embedding(event=event_data)
+
+        # 2. Insert into database
+        inserted_id = event_repository.create_event(
+            event_data=event_data.model_dump(),
+            embedding=embedding
         )
+        return bool(inserted_id)
+
+    except ValidationError as e:
+        logger.exception("Invalid event parameter", extra={"event": event})
         raise e
 
 
-def update_event(query:EventQuery, event: UpdateEvent)->bool:
+async def update_event(ctx: Context, query: EventQuery, event: UpdateEvent) -> str:
     """
     Update an existing event in the database.
 
     Description:
-        This tool updates an existing event based on the provided query and update data.
-        It first validates both the query (to identify the target event) and the event
-        update payload, then applies the update in the database.
+        This tool applies a partial update to an existing event. It conditionally recalculates
+        and updates the semantic vector embedding if fields like name, description, date,
+        location, organiser, or status are modified. Because this modifies database records,
+        this tool inherently triggers a security interceptor that pauses execution to ask the
+        human user for explicit approval before writing to the database.
 
     Parameters:
+        ctx (Context): The internal workflow context.
+
         query (EventQuery):
-            A structured object used to identify the event to be updated.
-            This must conform to the following EventQuery schema:
-                - name (str)
+            A structured object identifying the exact event to update.
+                - name (str): The current, exact name of the event in the database.
 
         event (UpdateEvent):
-            A structured object containing the fields to update in the event.
-            This must conform to the UpdateEvent schema and must include all
-            the fields such as:
-                - name (str): Name of the event
-                - description (str): Description of the event
-                - date (datetime): Date and time of the event
-                - location (str): Event location
-                - organiser (str): Organiser name
-                - status ("open" | "full" | "closed" | "completed" | "cancelled"): Event status
+            A structured object containing ONLY the fields that need to be updated.
+            All fields in this schema are optional.
+                - name (str, optional): The new name of the event.
+                - description (str, optional): The new description.
+                - date (str, optional): The new date strictly in ISO 8601 UTC format.
+                - location (str, optional): The new location/venue.
+                - organiser (str, optional): The new organiser name.
+                - status (str, optional): The new status ('open', 'full', 'closed', 'completed', 'cancelled').
 
     Returns:
-        bool:
-            - True:
-                The event was successfully found and updated in the database.
-            - False:
-                No matching event was found OR the update operation did not modify any record.
-
-    Raises:
-        ValidationError:
-            Raised when either the query or event update data does not match
-            the expected schema.
+        str: A descriptive message indicating the result of the operation.
+            - "Success: Successfully updated the event."
+            - "Failed: No fields provided to update."
+            - "Failed: The human user denied permission to execute this database action."
+            - "Failed: Event not found."
+            - "Failed: Database could not update the event."
 
     LLM Usage Guidelines:
-        - Always construct both `query` and `event` inputs according to their respective schemas.
-        - Ensure the query uniquely identifies the intended event.
-
-        Handling Results:
-        - If the function returns True:
-            → Inform the user that the event was successfully updated.
-            → Optionally summarize the updated fields.
-
-        - If the function returns False:
-            → Inform the user that no matching event was found OR no update was applied.
-            → Suggest verifying the query or modifying the update fields.
-
-        - If a ValidationError occurs:
-            → The input structure or data is invalid.
-            → Correct the query or update payload and retry the tool call.
-            → Do NOT assume any update has occurred.
-
-    Notes:
-        - This is a write operation that modifies existing data.
-        - The update is partial; only provided fields in `event` are modified.
-        - Ensure that updates do not unintentionally overwrite important fields.
+        - Exact Match Requirement: You must know the EXACT current name of the event to populate
+          the `query` parameter. If the user's request is vague (e.g., "Update the AI meetup"),
+          use the `search_events` tool FIRST to find the exact event name before calling this tool.
+        - The Partial Update Rule (CRITICAL): ONLY populate the fields in the `UpdateEvent` schema
+          that the user explicitly asked to change. Leave all other fields empty/null. Do not fetch
+          and pass existing data back into this tool just to fill out the schema.
+        - Handling Human Rejection: If the tool returns the message stating the human denied
+          permission, DO NOT apologize as if it is an error. Acknowledge that the user cancelled
+          the update and ask what they would like to do next.
+        - Date Updates: If updating the date, ensure it is in the future relative to the system's
+          current time, just like when creating an event.
     """
     try:
-        query = EventQuery.model_validate(query)
-        event = UpdateEvent.model_validate(event)
+        query_data = EventQuery.model_validate(query)
+        update_payload = UpdateEvent.model_validate(event)
 
-        is_updated = event_repository.update_event_by_name(
-            event_name=query.name,
-            event=event.model_dump()
+        # exclude_unset=True ensures we only update the fields the user explicitly changed
+        update_dict = update_payload.model_dump(exclude_unset=True)
+
+        if not update_dict:
+            return "Failed: No fields provided to update."
+
+        payload = {"query": query_data.model_dump(), "update": update_dict}
+        prefix = (f"\n\n⚠️ [SECURITY INTERCEPTOR] The AI wants to update an event.\n"
+                  f"📄 Payload: {json.dumps(payload, indent=2, default=str)}\n"
+                  f"Approve this update? (y/n): ")
+
+        # Suspend tool execution and emit an event to the main stream
+        human_response = await ctx.wait_for_event(
+            HumanResponseEvent,
+            waiter_id="update_event_confirmation",
+            waiter_event=InputRequiredEvent(prefix=prefix,user_name="human"),
+            requirements={"user_name": "human"},
         )
-        return is_updated
+
+        # Evaluate human input
+        if human_response.response.strip().lower() not in ["y", "yes"]:
+            return "Failed: The human user denied permission to execute this database action."
+
+        print("\n✅ Action approved. Executing...", flush=True)
+
+        new_embedding: Optional[List[float]] = None
+
+        # Check if any fields that affect the semantic search were modified
+        semantic_fields = {"name", "description", "location", "date", "organiser", "status"}
+        if any(field in update_dict for field in semantic_fields):
+
+            # Fetch the existing event to merge old and new data for an accurate embedding
+            existing_event = event_repository.get_event_by_name(event_name=query_data.name)
+            if not existing_event:
+                return "Failed: Event not found."
+
+            merged_name = update_dict.get("name", existing_event.get("name", ""))
+            merged_desc = update_dict.get("description", existing_event.get("description", ""))
+            merged_loc = update_dict.get("location", existing_event.get("location", ""))
+            merged_date = update_dict.get("date", existing_event.get("date", ""))
+            merged_organiser = update_dict.get("organiser", existing_event.get("organiser", ""))
+            merged_status = update_dict.get("status", existing_event.get("status", ""))
+            merged_event = CreateEvent(
+                name=merged_name,
+                description=merged_desc,
+                date=merged_date,
+                location=merged_loc,
+                organiser=merged_organiser,
+                status=merged_status
+            )
+
+            new_embedding = generate_event_embedding(merged_event)
+
+        # Apply the update
+        success = event_repository.update_event_by_name(
+            event_name=query_data.name,
+            event_data=update_dict,
+            new_embedding=new_embedding
+        )
+
+        return "Success: Successfully updated the event." if success else "Failed: Database could not update the event."
     except ValidationError as e:
-        logger.exception(
-            "Invalid query/event parameter",
-            extra={"query": query,"event":event}
-        )
+        logger.exception("Invalid query/event parameter", extra={"query": query, "event": event})
         raise e
 
-def delete_event_from_name(query: EventQuery)->bool:
+async def delete_event(ctx: Context, query: EventQuery) -> str:
     """
-    Delete an event from the database using its name.
+    Delete an event from the database permanently using its exact name.
 
     Description:
-        This tool validates the provided query and deletes an event that matches
-        the given event name. The operation is permanent and cannot be undone.
+        This tool permanently removes an event record from the database. Because this is a
+        destructive operation, it inherently triggers a mandatory security interceptor that
+        pauses execution to ask the human user for explicit Y/N approval before actually
+        deleting the data. Use this tool whenever a user explicitly requests to cancel,
+        remove, or delete an event.
 
     Parameters:
-        query (EventQuery):
-            A structured object used to identify the event to be deleted.
-            This must conform to the EventQuery schema and must include:
-                - name (str): The name of the event to delete
+        ctx (Context): The internal workflow context. (Injected automatically by the system).
 
-            Example:
-                {
-                    "name": "Tech Conference 2026"
-                }
+        query (EventQuery):
+            A structured object identifying the exact event to be deleted.
+                - name (str): The exact, current name of the event in the database.
 
     Returns:
-        bool:
-            - True:
-                The event was successfully found and deleted from the database.
-            - False:
-                No matching event was found, so no deletion was performed.
-
-    Raises:
-        ValidationError:
-            Raised when the query does not match the expected schema
-            (e.g., missing or invalid "name" field).
+        str: A descriptive message indicating the result of the operation.
+            - "Success: Successfully deleted the event."
+            - "Failed: The human user denied permission to execute this database action."
+            - "Failed: Event not found."
 
     LLM Usage Guidelines:
-        - Always provide a valid query containing the event name.
-        - Ensure the event name is accurate and specific.
-
-        Handling Results:
-        - If the function returns True:
-            → Inform the user that the event has been successfully deleted.
-
-        - If the function returns False:
-            → Inform the user that no matching event was found.
-            → Ask if they would like to try a different event name.
-
-        - If a ValidationError occurs:
-            → The input format is invalid.
-            → Correct the query structure and retry the tool call.
-            → Do NOT assume any deletion has occurred.
-
-    Safety Guidelines:
-        - Deletion is irreversible. Always confirm with the user before calling this tool.
-        - Ensure the user explicitly intends to delete the event.
-
-    Notes:
-        - This is a destructive operation and permanently removes data.
-        - The tool deletes events based solely on the event name.
-        - Ensure there are no ambiguities in the event name before deletion.
+        - Exact Match Requirement: You must know the EXACT current name of the event to populate
+          the `query` parameter. If the user's request is vague (e.g., "Delete that tech meetup"),
+          you MUST use the `search_events` tool FIRST to find the exact event name before calling this tool.
+        - Automatic Confirmation: Do NOT ask the user "Are you sure you want to delete this?"
+          in your conversational response. The tool itself will automatically freeze the terminal
+          and prompt the user for secure confirmation. Simply execute the tool when requested.
+        - Handling Human Rejection: If the tool returns the message stating the human denied
+          permission, DO NOT treat it as a system error or apologize. Simply acknowledge that
+          the deletion was cancelled by the user and ask how else you can help.
+        - Handling Not Found: If the tool returns "Failed: Event not found.", inform the user
+          and suggest using the search tool to find the correct event name.
     """
     try:
-        query = EventQuery.model_validate(query)
+        query_data = EventQuery.model_validate(query)
 
-        is_deleted = event_repository.delete_event_by_name(
-            event_name=query.name
+        # --- NATIVE HITL INTERCEPTION ---
+        prefix = (f"\n\n⚠️ [SECURITY INTERCEPTOR] "
+                  f"The AI wants to PERMANENTLY DELETE the event: '{query_data.name}'.\n"
+                  f"Approve this deletion? (y/n): ")
+
+        human_response = await ctx.wait_for_event(
+            HumanResponseEvent,
+            waiter_id="delete_event_confirmation",
+            waiter_event=InputRequiredEvent(prefix=prefix, user_name="human"),
+            requirements={"user_name": "human"},
         )
-        return is_deleted
+
+        # Evaluate human input
+        if human_response.response.strip().lower() not in ["y", "yes"]:
+            return "Failed: The human user denied permission to execute this database action."
+
+        print("\n✅ Action approved. Executing...", flush=True)
+
+        success = event_repository.delete_event_by_name(event_name=query_data.name)
+        return "Success: Successfully deleted the event." if success else "Failed: Event not found."
     except ValidationError as e:
-        logger.exception(
-            "Invalid query parameter",
-            extra={"query":query}
-        )
+        logger.exception("Invalid query parameter", extra={"query": query})
         raise e

@@ -390,6 +390,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "llama-index" },
+    { name = "llama-index-embeddings-google-genai" },
     { name = "llama-index-llms-google-genai" },
     { name = "pydantic" },
     { name = "pymongo" },
@@ -404,6 +405,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "llama-index", specifier = ">=0.14.18" },
+    { name = "llama-index-embeddings-google-genai", specifier = ">=0.5.0" },
     { name = "llama-index-llms-google-genai", specifier = ">=0.9.0" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pymongo", specifier = ">=4.16.0" },
@@ -813,6 +815,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/9d/ab/d864b2b9ee2eeb5f41c31f05f398cfc5cbb7f9a2eb801dfd1a811d399805/llama_index_core-0.14.18.tar.gz", hash = "sha256:5bd5153ac3f097576a42bb778977b35a9f6184b91b47919cf3bb03616ed31591", size = 11599864, upload-time = "2026-03-16T19:41:22.806Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/27/33/64a32bc376390340a05f3bcea0594dc6384c77a8298569e851add75ff9bb/llama_index_core-0.14.18-py3-none-any.whl", hash = "sha256:584e5995929d129036cf8fe2d1b8f0d581e43335760f2f6083cd767a71f47f8d", size = 11945592, upload-time = "2026-03-16T19:41:19.427Z" },
+]
+
+[[package]]
+name = "llama-index-embeddings-google-genai"
+version = "0.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "google-genai" },
+    { name = "llama-index-core" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4b/e6/17f94417627d12cc1a6b103f14ee926b52d86566fc81947bef903126cda6/llama_index_embeddings_google_genai-0.5.0.tar.gz", hash = "sha256:051d7ca0a95e3bc1d0f32f5cc167cca119ce42bc4a516c8117934c589c93b19f", size = 5950, upload-time = "2026-03-12T20:19:35.483Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/85/96/520691db2af5f606cf2d6f38aaafb29a416b4bc4cc09219c6b55369ead31/llama_index_embeddings_google_genai-0.5.0-py3-none-any.whl", hash = "sha256:25a32ec995785e5e903c08561252bb107fc3f41b79691eb8fabb6a8e09ca238f", size = 5720, upload-time = "2026-03-12T20:19:34.731Z" },
 ]
 
 [[package]]

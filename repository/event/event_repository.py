@@ -1,77 +1,116 @@
 from datetime import datetime, timezone
-from typing import Any, Dict, List
-
-from bson import ObjectId
+from typing import Any, Dict, List, Optional
 
 from db.config import MongoManager
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class EventRepository:
     def __init__(self):
         self.collection = MongoManager.get_db()["events"]
+        # The name of the Vector Search Index created in the MongoDB Atlas UI
+        self.vector_index_name = "event_vector_index"
 
-    def get_all_events(self, query: Dict[str,Any])->List[Dict[str,Any]]:
+    def get_all_events(self, query: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+        query = query or {}
         cursor = self.collection.find(query)
-
-        events = cursor.to_list(length=None)
+        events = list(cursor)
         for event in events:
             event["_id"] = str(event["_id"])
-
         return events
 
-    def get_event(self, query: Dict[str,Any])->Dict[str,Any]|None:
+    def get_event(self, query: Dict[str, Any]) -> Dict[str, Any] | None:
         event = self.collection.find_one(query)
-        event["_id"] = str(event["_id"])
+        if event:
+            event["_id"] = str(event["_id"])
         return event
 
-    def get_event_by_id(self, event_id: str)->Dict[str,Any]|None:
-        return self.get_event(query={"_id": ObjectId(event_id)})
-
-    def get_event_by_name(self, event_name: str)->Dict[str,Any]|None:
+    def get_event_by_name(self, event_name: str) -> Dict[str, Any] | None:
         return self.get_event(query={"name": event_name})
 
-    def create_event(self, event: Dict[str,Any]) -> str:
-        event["createdAt"] = datetime.now(timezone.utc)
+    def create_event(self, event_data: Dict[str, Any], embedding: List[float]) -> str:
+        """
+        Inserts a new event along with its generated vector embedding.
+        """
+        event_data["createdAt"] = datetime.now(timezone.utc)
+        event_data["embedding"] = embedding
 
-        result= self.collection.insert_one(event)
-
+        result = self.collection.insert_one(event_data)
         return str(result.inserted_id)
 
-    def update_event(self, query: Dict[str,Any], event: Dict[str,Any])->bool:
-        event["updatedAt"] = datetime.now(timezone.utc)
+    def update_event(self, query: Dict[str, Any], event_data: Dict[str, Any],
+                     new_embedding: Optional[List[float]] = None) -> bool:
+        """
+        Safely applies a partial update to an event. Conditionally updates the embedding
+        if fields that affect semantics (like name or description) were changed.
+        """
+        if not event_data and not new_embedding:
+            return False  # Failsafe: nothing to update
+
+        event_data["updatedAt"] = datetime.now(timezone.utc)
+
+        if new_embedding:
+            event_data["embedding"] = new_embedding
 
         result = self.collection.update_one(
             query,
-            {"$set": event}
+            {"$set": event_data}
         )
-
         return result.modified_count > 0
 
-    def update_event_by_id(self, event_id: str, event: Dict[str,Any])->bool:
-        return self.update_event(
-            query={"_id": ObjectId(event_id)},
-            event=event
-        )
-
-    def update_event_by_name(self, event_name: str, event: Dict[str,Any])->bool:
+    def update_event_by_name(
+            self,
+            event_name: str,
+            event_data: Dict[str, Any],
+            new_embedding: Optional[List[float]] = None
+    ) -> bool:
         return self.update_event(
             query={"name": event_name},
-            event=event
+            event_data=event_data,
+            new_embedding=new_embedding
         )
 
-    def delete_event(self, query: Dict[str,Any])->bool:
-        result = self.collection.delete_one(query)
-
+    def delete_event_by_name(self, event_name: str) -> bool:
+        result = self.collection.delete_one({"name": event_name})
         return result.deleted_count > 0
 
-    def delete_event_by_id(self, event_id: str)->bool:
-        return self.delete_event(
-            query={"_id": ObjectId(event_id)}
-        )
+    def semantic_search(self, query_vector: List[float], limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Performs a semantic search using MongoDB Atlas Vector Search.
+        """
+        pipeline = [
+            {
+                "$vectorSearch": {
+                    "index": self.vector_index_name,
+                    "path": "embedding",
+                    "queryVector": query_vector,
+                    "numCandidates": limit * 10,  # Atlas recommendation for recall accuracy
+                    "limit": limit
+                }
+            },
+            {
+                # Step 2: Add the relevance score to the document
+                "$set": {
+                    "score": {"$meta": "vectorSearchScore"}
+                }
+            },
+            {
+                # Step 3: Remove the heavy vector array from the results
+                "$unset": "embedding"
+            }
+        ]
 
-    def delete_event_by_name(self, event_name: str)->bool:
-        return self.delete_event(
-            query={"name": event_name}
-        )
+        try:
+            cursor = self.collection.aggregate(pipeline)
+            events = list(cursor)
+            for event in events:
+                event["_id"] = str(event["_id"])
+            return events
+        except Exception as e:
+            logger.exception("Semantic search failed. Verify your MongoDB Atlas Vector Index is configured properly.")
+            raise e
+
 
 event_repository = EventRepository()
