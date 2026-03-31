@@ -6,15 +6,10 @@ from llama_index.core.agent.workflow import AgentStream
 from llama_index.core.workflow import Context, HumanResponseEvent, InputRequiredEvent
 
 from app.models.llm_model import llm
-from db.config import MongoManager
-from tools.database.tools import (
-    create_event,
-    delete_event,
-    search_events,
-    update_event,
-)
+from db.config import SQLiteManager
+from events.tool import fetch_events
 from utils.logger import get_logger
-from utils.prompts import SYSTEM_PROMPT_4
+from utils.prompts import SYSTEM_PROMPT_2
 
 logger = get_logger(__name__)
 
@@ -29,13 +24,8 @@ async def main():
                 "and securely creating, updating, or deleting database records."
             ),
             llm=llm,
-            tools=[
-                search_events,
-                create_event,
-                update_event,
-                delete_event
-            ],
-            system_prompt=SYSTEM_PROMPT_4,
+            tools=[fetch_events],
+            system_prompt=SYSTEM_PROMPT_2,
         )
 
         # 2. Initialize the workflow context
@@ -108,23 +98,24 @@ async def main():
         print("\n❌ Critical Failure: Could not start the AI Assistant. Check logs for details.")
     finally:
         try:
-            MongoManager.close()
-            logger.info("MongoDB connection safely closed.")
+            SQLiteManager.close()
+            logger.info("SQLite connection safely closed.")
         except Exception:
-            logger.exception("Failed to close MongoDB connection cleanly")
+            logger.exception("Failed to close SQLite connection cleanly")
 
 
 if __name__ == "__main__":
     # Ensure proper async loop execution
     try:
+        SQLiteManager.init_db()
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\n\nSession terminated by user (Ctrl+C).")
         sys.exit(0)
     finally:
         try:
-            MongoManager.close()
-            logger.info("MongoDB connection safely closed.")
+            SQLiteManager.close()
+            logger.info("SQLite connection safely closed.")
         except Exception:
-            logger.exception("Failed to close MongoDB connection cleanly")
+            logger.exception("Failed to close SQLite connection cleanly")
             pass
