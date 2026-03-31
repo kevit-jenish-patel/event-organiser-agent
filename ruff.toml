@@ -52,7 +52,7 @@ select = [
     "I",    # import sorting (import consistency)
     "S",    # security checks
 ]
-ignore = ["E203"] # Whitespace before ':' — conflicts with Black formatter
+ignore = ["E203","E501"] # Whitespace before ':' — conflicts with Black formatter
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
