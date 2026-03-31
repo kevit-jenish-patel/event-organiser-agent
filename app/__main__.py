@@ -20,8 +20,9 @@ async def main():
         workflow = FunctionAgent(
             name="Event Agent",
             description=(
-                "An intelligent assistant capable of querying events via semantic search, "
-                "and securely creating, updating, or deleting database records."
+                "An agent that converts natural language queries into structured QuerySchema objects "
+                "to retrieve event data via tools, supporting filters, joins, sorting, and limits while "
+                "strictly adhering to the allowed database schema."
             ),
             llm=llm,
             tools=[fetch_events],
@@ -33,7 +34,7 @@ async def main():
 
         # 3. Chat Interface Bootup Sequence
         print("=" * 60)
-        print("🚀 Event Management AI Assistant is Online.")
+        print("🚀 Event Assistant is Online.")
         print("Type 'quit' or 'exit' to terminate the session.")
         print("=" * 60)
 

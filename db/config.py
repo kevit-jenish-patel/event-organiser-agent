@@ -47,28 +47,30 @@ class SQLiteManager:
 
         cursor.execute(
             """
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                email TEXT UNIQUE NOT NULL,
-                password TEXT NOT NULL
+            CREATE TABLE IF NOT EXISTS users
+            (
+                id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                name     TEXT        NOT NULL,
+                email    TEXT UNIQUE NOT NULL,
+                password TEXT        NOT NULL
             );
             """
         )
 
         cursor.execute(
             """
-            CREATE TABLE IF NOT EXISTS events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                description TEXT NOT NULL,
-                date TEXT NOT NULL,
-                location TEXT NOT NULL,
+            CREATE TABLE IF NOT EXISTS events
+            (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                name         TEXT    NOT NULL,
+                description  TEXT    NOT NULL,
+                date         TEXT    NOT NULL,
+                location     TEXT    NOT NULL,
                 organiser_id INTEGER NOT NULL,
-                status TEXT DEFAULT 'OPEN',
-                created_at TEXT NOT NULL,
-                updated_at TEXT,
-                FOREIGN KEY (organiser_id) REFERENCES users(id)
+                status       TEXT DEFAULT 'OPEN',
+                created_at   TEXT    NOT NULL,
+                updated_at   TEXT,
+                FOREIGN KEY (organiser_id) REFERENCES users (id)
             );
             """
         )

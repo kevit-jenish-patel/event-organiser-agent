@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # MONGODB_URI: str = Field(...,min_length=1)
     # DATABASE_NAME: str = Field(...,min_length=1)
 
-    SQLITE_DB_PATH = str = Field("test.db", description="File path for the SQLite database", min_length=1)
+    SQLITE_DB_PATH: str = Field("test.db", min_length=1)
 
 @lru_cache()
 def get_settings():
