@@ -33,8 +33,6 @@ class EventRepository:
             List[Dict] | Dict | None
         """
         try:
-            logger.info(f"Query: {query}\nParams: {params}")
-
             cursor = self.db.cursor()
 
             if params:

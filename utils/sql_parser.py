@@ -11,7 +11,7 @@ logger = get_logger(__name__)
 class Filter(BaseModel):
     field: str = Field(
         ...,
-        description="Column name to apply the filter on. Can be 'column' or 'table.column'. Must exist in allowed schema."
+        description="Column name to apply the filter on. Always use 'table_name.column_name'. Must exist in allowed schema."
     )
     operator: Literal["=", ">", "<", ">=", "<=", "LIKE"] = Field(
         ...,
@@ -45,7 +45,7 @@ class Join(BaseModel):
 class OrderBy(BaseModel):
     field: str = Field(
         ...,
-        description="Column to sort the results by. Can be 'column' or 'table.column'. Must exist in allowed schema."
+        description="Column to sort the results by. Always use 'table_name.column_name'. Must exist in allowed schema."
     )
     direction: Literal["asc", "desc"] = Field(
         default="asc",
@@ -61,7 +61,7 @@ class QuerySchema(BaseModel):
 
     columns: List[str] = Field(
         ...,
-        description="List of columns to include in the SELECT clause. Each column must exist in the allowed schema."
+        description="List of columns to include in the SELECT clause. Always use table_name.column_name. Each column must exist in the allowed schema."
     )
 
     filters: Optional[List[Filter]] = Field(
@@ -110,7 +110,15 @@ class SQLParser:
     def build_sql_from_schema(cls, query_schema: QuerySchema) -> Tuple[str, Tuple[Any]]:
         params: List[Any] = []
 
-        query = exp.select(*[exp.column(col) for col in query_schema.columns]).from_(
+        columns = []
+        for col in query_schema.columns:
+            if "." in col:
+                table, column = col.split(".", 1)
+                columns.append(exp.column(column, table=table))
+            else:
+                columns.append(exp.column(col))
+
+        query = exp.select(*columns).from_(
             exp.Table(this=query_schema.table)
         )
 
@@ -148,7 +156,7 @@ class SQLParser:
 
             condition = operator_cls(
                 this=column,
-                expression=exp.Parameter()
+                expression=exp.Var(this="?")
             )
 
             conditions.append(condition)
@@ -172,7 +180,7 @@ class SQLParser:
         return query.order_by(order_expr)
 
     @classmethod
-    def _validate_column(cls,column: str, base_table:str):
+    def _validate_column(cls,column: str, base_table:str,is_select_column: bool = False) -> None:
         if "." in column:
             table, col = column.split(".", 1)
         else:
@@ -190,15 +198,18 @@ class SQLParser:
             if col not in cls.ALLOWED_SCHEMA[base_table]:
                 raise ValidationError(f"Invalid column: {column}")
 
+        if is_select_column and col in {"id"}:
+            raise ValidationError(f"Invalid column: {column}")
+
     @classmethod
-    def _validate_filter_schema(cls, filter_schema: Filter, base_table: str):
+    def _validate_filter_schema(cls, filter_schema: Filter, base_table: str) -> None:
         if filter_schema.operator not in cls.OPERATOR_MAP:
             raise ValidationError(f"Invalid operator: {filter_schema.operator}")
 
         cls._validate_column(column=filter_schema.field, base_table=base_table)
 
     @classmethod
-    def _validate_join_schema(cls, join_schema: Join, base_table:str):
+    def _validate_join_schema(cls, join_schema: Join, base_table:str) -> None:
         if join_schema.table not in cls.ALLOWED_SCHEMA:
             raise ValidationError(f"Invalid join table: {join_schema.table}")
 
@@ -206,7 +217,7 @@ class SQLParser:
         cls._validate_column(column=join_schema.right_field, base_table=join_schema.table)
 
     @classmethod
-    def validate_schema(cls, query_schema: QuerySchema) -> bool:
+    def validate_schema(cls, query_schema: QuerySchema) -> QuerySchema:
         try:
             query_schema = QuerySchema.model_validate(query_schema)
 
@@ -217,7 +228,7 @@ class SQLParser:
                 raise ValidationError("No select columns specified")
 
             for col in query_schema.columns:
-                cls._validate_column(column=col, base_table=query_schema.table)
+                cls._validate_column(column=col, base_table=query_schema.table,is_select_column=True)
 
             for filter_schema in query_schema.filters or []:
                 cls._validate_filter_schema(filter_schema=filter_schema,base_table=query_schema.table)
@@ -228,18 +239,15 @@ class SQLParser:
             if query_schema.order_by:
                 cls._validate_column(column=query_schema.order_by.field, base_table=query_schema.table)
 
-            return True
+            return query_schema
         except ValidationError as e:
-            logger.exception(f"Invalid query schema \n{query_schema.model_dump_json(indent=2)}\n")
+            logger.exception(f"Invalid query schema \n{query_schema}\n")
             raise e
 
     @classmethod
     def generate_valid_sql(cls, query_schema: QuerySchema) -> Tuple[str, Tuple[Any]]:
         try:
-            logger.info(f"Query Schema: \n{query_schema.model_dump_json(indent=2)}\n")
-            is_validated = cls.validate_schema(query_schema=query_schema)
-            if not is_validated:
-                raise ValidationError("Query schema validation failed")
+            query_schema = cls.validate_schema(query_schema=query_schema)
 
             sql, params = cls.build_sql_from_schema(query_schema=query_schema)
             return sql, params

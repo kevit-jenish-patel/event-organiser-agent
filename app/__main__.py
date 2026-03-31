@@ -2,14 +2,14 @@ import asyncio
 import sys
 
 from llama_index.core.agent import FunctionAgent
-from llama_index.core.agent.workflow import AgentStream
-from llama_index.core.workflow import Context, HumanResponseEvent, InputRequiredEvent
+from llama_index.core.agent.workflow import AgentStream, ToolCall
+from llama_index.core.workflow import Context,InputRequiredEvent, HumanResponseEvent
 
 from app.models.llm_model import llm
 from db.config import SQLiteManager
 from events.tool import fetch_events
 from utils.logger import get_logger
-from utils.prompts import SYSTEM_PROMPT_2
+from utils.prompts import SYSTEM_PROMPT_3
 
 logger = get_logger(__name__)
 
@@ -20,13 +20,11 @@ async def main():
         workflow = FunctionAgent(
             name="Event Agent",
             description=(
-                "An agent that converts natural language queries into structured QuerySchema objects "
-                "to retrieve event data via tools, supporting filters, joins, sorting, and limits while "
-                "strictly adhering to the allowed database schema."
+                "You are an conversational assistant that helps users to answer their queries."
             ),
             llm=llm,
             tools=[fetch_events],
-            system_prompt=SYSTEM_PROMPT_2,
+            system_prompt=SYSTEM_PROMPT_3,
         )
 
         # 2. Initialize the workflow context
@@ -80,10 +78,9 @@ async def main():
                         )
 
                     # -> Handle backend/logging events (Tool calls starting, etc.)
-                    else:
+                    elif isinstance(event, ToolCall):
                         logger.info(
-                            "Agent internal event triggered",
-                            extra={"event_type": type(event).__name__, "event": str(event)}
+                            f"Agent internal event triggered {str(event)}",
                         )
 
                 # Await the final completion of the handler for this turn
